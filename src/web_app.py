@@ -3,9 +3,11 @@ import json
 import requests
 import streamlit as st
 
+from agents.request_parser import ASRRequestParser
 from ai_client import AzureAIClient
 from config import load_config
 from core.tool_registry import ToolRegistry
+from models.asr_request import ASRRequest
 from services.azure_resource_service import AzureResourceService
 from tools.recovery_services_vault_tool import RecoveryServicesVaultTool
 from tools.resource_group_tool import ResourceGroupTool
@@ -41,6 +43,12 @@ def initialize_session_state() -> None:
 
     if "pending_action" not in st.session_state:
         st.session_state.pending_action = None
+
+    if "asr_request" not in st.session_state:
+        st.session_state.asr_request = None
+
+    if "request_parsed" not in st.session_state:
+        st.session_state.request_parsed = False
 
 
 def display_tool_result(result) -> None:
@@ -176,9 +184,165 @@ def run_vault_check(registry: ToolRegistry) -> None:
         except Exception as error:
             st.error(f"Application error: {error}")
 
+def display_asr_request_review(
+    registry: ToolRegistry,
+) -> None:
+    """Allow the user to review and approve extracted ASR details."""
 
-def run_ai_chat(ai_client: AzureAIClient) -> None:
-    """Display the first conversational AI interface."""
+    request_data = st.session_state.asr_request
+
+    if request_data is None:
+        return
+
+    st.divider()
+    st.subheader("Review ASR Request")
+
+    st.info(
+        "Review and correct the information below. "
+        "No Azure changes will be made."
+    )
+
+    with st.form("asr_request_review_form"):
+        vm_name = st.text_input(
+            "VM name",
+            value=request_data.vm_name,
+        )
+
+        source_resource_group = st.text_input(
+            "Source resource group",
+            value=request_data.source_resource_group,
+        )
+
+        source_region = st.text_input(
+            "Source region",
+            value=request_data.source_region,
+            placeholder="eastus",
+        )
+
+        target_region = st.text_input(
+            "Target region",
+            value=request_data.target_region,
+            placeholder="centralus",
+        )
+
+        vault_name = st.text_input(
+            "Recovery Services vault name",
+            value=request_data.vault_name,
+        )
+
+        vault_resource_group = st.text_input(
+            "Vault resource group",
+            value=request_data.vault_resource_group,
+        )
+
+        target_resource_group = st.text_input(
+            "Target resource group",
+            value=request_data.target_resource_group,
+        )
+
+        target_vnet = st.text_input(
+            "Target virtual network",
+            value=request_data.target_vnet,
+        )
+
+        target_subnet = st.text_input(
+            "Target subnet",
+            value=request_data.target_subnet,
+        )
+
+        cache_storage_account = st.text_input(
+            "Cache storage account",
+            value=request_data.cache_storage_account,
+        )
+
+        approved = st.form_submit_button(
+            "Approve Read-Only Prechecks",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if not approved:
+        return
+
+    updated_request = ASRRequest(
+        vm_name=vm_name.strip(),
+        source_resource_group=source_resource_group.strip(),
+        source_region=source_region.strip(),
+        target_region=target_region.strip(),
+        vault_name=vault_name.strip(),
+        vault_resource_group=vault_resource_group.strip(),
+        target_resource_group=target_resource_group.strip(),
+        target_vnet=target_vnet.strip(),
+        target_subnet=target_subnet.strip(),
+        cache_storage_account=cache_storage_account.strip(),
+    )
+
+    st.session_state.asr_request = updated_request
+
+    missing_fields = updated_request.missing_fields()
+
+    if missing_fields:
+        st.error(
+            "Complete these required fields before running prechecks: "
+            + ", ".join(missing_fields)
+        )
+        return
+
+    st.success("Read-only prechecks approved.")
+
+    results = []
+
+    with st.status(
+        "Running approved read-only prechecks...",
+        expanded=True,
+    ) as status:
+        st.write("Checking source resource group")
+
+        resource_group_result = registry.execute(
+            "check_resource_group",
+            resource_group_name=updated_request.source_resource_group,
+        )
+
+        results.append(resource_group_result)
+
+        if (
+            updated_request.vault_name
+            and updated_request.vault_resource_group
+        ):
+            st.write("Checking Recovery Services vault")
+
+            vault_result = registry.execute(
+                "check_recovery_services_vault",
+                resource_group_name=(
+                    updated_request.vault_resource_group
+                ),
+                vault_name=updated_request.vault_name,
+                expected_location=updated_request.target_region,
+            )
+
+            results.append(vault_result)
+        else:
+            st.write(
+                "Vault check skipped because the vault name or "
+                "vault resource group was not supplied."
+            )
+
+        status.update(
+            label="Read-only prechecks complete",
+            state="complete",
+            expanded=False,
+        )
+
+    st.subheader("Precheck Results")
+
+    for result in results:
+        display_tool_result(result)
+
+def run_ai_chat(
+    ai_client: AzureAIClient,
+    registry: ToolRegistry,
+) -> None:
+    """Display the conversational ASR intake interface."""
 
     st.subheader("AI Planning Assistant")
 
@@ -190,62 +354,67 @@ def run_ai_chat(ai_client: AzureAIClient) -> None:
         "Example: Replicate FinanceVM01 from East US to Central US"
     )
 
-    if not user_request:
-        return
-
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": user_request,
-        }
-    )
-
-    with st.chat_message("user"):
-        st.markdown(user_request)
-
-    planning_prompt = f"""
-You are the planning assistant for an Azure Site Recovery orchestrator.
-
-Create a concise read-only precheck plan for the user's request.
-
-Do not claim that checks have already been completed.
-Do not create, change, delete, or replicate any Azure resources.
-Clearly separate:
-1. Understood request
-2. Required missing information
-3. Read-only prechecks
-4. Changes that would require explicit approval
-
-User request:
-{user_request}
-"""
-
-    try:
-        with st.chat_message("assistant"):
-            with st.spinner("Creating the ASR precheck plan..."):
-                response = ai_client.ask(planning_prompt)
-
-            st.markdown(response)
-
+    if user_request:
         st.session_state.messages.append(
             {
-                "role": "assistant",
-                "content": response,
+                "role": "user",
+                "content": user_request,
             }
         )
 
-    except Exception as error:
-        error_message = f"AI request failed: {error}"
+        with st.chat_message("user"):
+            st.markdown(user_request)
 
-        with st.chat_message("assistant"):
-            st.error(error_message)
+        try:
+            parser = ASRRequestParser(ai_client)
 
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "content": error_message,
-            }
-        )
+            with st.chat_message("assistant"):
+                with st.spinner(
+                    "Analyzing the Azure Site Recovery request..."
+                ):
+                    parsed_request = parser.parse(user_request)
+
+                missing_fields = parsed_request.missing_fields()
+
+                response = (
+                    "I extracted the ASR request details. "
+                    "Review them below before approving any prechecks."
+                )
+
+                if missing_fields:
+                    response += (
+                        "\n\nRequired information is still missing: "
+                        + ", ".join(missing_fields)
+                    )
+
+                st.markdown(response)
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                }
+            )
+
+            st.session_state.asr_request = parsed_request
+            st.session_state.request_parsed = True
+
+        except Exception as error:
+            error_message = f"Request analysis failed: {error}"
+
+            with st.chat_message("assistant"):
+                st.error(error_message)
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": error_message,
+                }
+            )
+
+    if st.session_state.request_parsed:
+        display_asr_request_review(registry)
+    
 
 
 def main() -> None:
@@ -289,6 +458,8 @@ def main() -> None:
         if st.button("Clear Conversation"):
             st.session_state.messages = []
             st.session_state.pending_action = None
+            st.session_state.asr_request = None
+            st.session_state.request_parsed = False
             st.rerun()
 
     chat_tab, resource_group_tab, vault_tab = st.tabs(
@@ -300,7 +471,10 @@ def main() -> None:
     )
 
     with chat_tab:
-        run_ai_chat(ai_client)
+        run_ai_chat(
+            ai_client=ai_client,
+            registry=registry,
+    )
 
     with resource_group_tab:
         run_resource_group_check(registry)
