@@ -29,7 +29,34 @@ class ExecutionPlanBuilder:
             )
         )
 
-        # Step 2: Cache storage account
+                # Step 2: Source VM discovery and eligibility
+        if (
+            request.vm_name
+            and request.source_resource_group
+        ):
+            steps.append(
+                ExecutionStep(
+                    step_id="check-source-vm-eligibility",
+                    name="Check source VM eligibility",
+                    description=(
+                        "Discover the source VM and validate its "
+                        "region, power state, generation, disk types, "
+                        "encryption settings, and ephemeral OS-disk "
+                        "configuration."
+                    ),
+                    tool_name="check_source_vm_eligibility",
+                    parameters={
+                        "resource_group_name": (
+                            request.source_resource_group
+                        ),
+                        "vm_name": request.vm_name,
+                        "expected_location": (
+                            request.source_region
+                        ),
+                    },
+                )
+            )
+        # Step 3: Cache storage account
         if (
             request.cache_storage_account
             and request.cache_storage_resource_group
@@ -58,7 +85,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 3: Target resource group
+        # Step 4: Target resource group
         if request.target_resource_group:
             steps.append(
                 ExecutionStep(
@@ -76,7 +103,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 4: Target virtual network
+        # Step 5: Target virtual network
         if (
             request.target_resource_group
             and request.target_vnet
@@ -105,7 +132,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 5: Target subnet
+        # Step 6: Target subnet
         if (
             request.target_resource_group
             and request.target_vnet
@@ -134,7 +161,7 @@ class ExecutionPlanBuilder:
                     },
                 )
             )
-                # Step 6: Target subnet NSG rules
+                # Step 7: Target subnet NSG rules
         if (
             request.target_resource_group
             and request.target_vnet
@@ -172,7 +199,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 7: Recovery Services vault
+        # Step 8: Recovery Services vault
         if (
             request.vault_name
             and request.vault_resource_group

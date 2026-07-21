@@ -27,13 +27,27 @@ class AzureResourceService:
             "Content-Type": "application/json",
         }
 
-    def get(self, path: str, api_version: str) -> dict[str, Any]:
+    def get(
+        self,
+        path: str,
+        api_version: str,
+        query_params: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Send an authenticated GET request to Azure Resource Manager."""
+
         url = f"{self.ARM_BASE_URL}{path}"
+
+        params = {
+            "api-version": api_version,
+        }
+
+        if query_params:
+            params.update(query_params)
 
         response = requests.get(
             url,
             headers=self._get_headers(),
-            params={"api-version": api_version},
+            params=params,
             timeout=30,
         )
 

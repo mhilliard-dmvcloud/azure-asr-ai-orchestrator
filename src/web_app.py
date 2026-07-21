@@ -22,7 +22,9 @@ from tools.target_virtual_network_tool import (
     TargetVirtualNetworkTool,
 )
 from tools.target_nsg_rule_tool import TargetNsgRuleTool
-
+from tools.source_vm_eligibility_tool import (
+    SourceVmEligibilityTool,
+)
 
 def build_registry(config) -> ToolRegistry:
     """Create and populate the orchestrator tool registry."""
@@ -33,7 +35,9 @@ def build_registry(config) -> ToolRegistry:
 
     registry = ToolRegistry()
     registry.register(ResourceGroupTool(azure_service))
-    registry.register(RecoveryServicesVaultTool(azure_service))
+    registry.register(
+    SourceVmEligibilityTool(azure_service)
+    )
     registry.register(CacheStorageAccountTool(azure_service))
     registry.register(
         TargetVirtualNetworkTool(azure_service)
@@ -44,6 +48,9 @@ def build_registry(config) -> ToolRegistry:
     registry.register(
         TargetNsgRuleTool(azure_service)
     )
+    registry.register(RecoveryServicesVaultTool(azure_service)
+)
+    
 
     return registry
 
