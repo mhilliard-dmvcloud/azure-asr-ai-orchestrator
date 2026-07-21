@@ -56,7 +56,48 @@ class ExecutionPlanBuilder:
                     },
                 )
             )
-        # Step 3: Cache storage account
+                # Step 3: Source VM network discovery
+        if (
+            request.vm_name
+            and request.source_resource_group
+        ):
+            steps.append(
+                ExecutionStep(
+                    step_id=(
+                        "check-source-vm-network-interfaces"
+                    ),
+                    name=(
+                        "Check source VM network interfaces"
+                    ),
+                    description=(
+                        "Discover every NIC and IP configuration "
+                        "attached to the source VM, identify the "
+                        "primary NIC and source subnet, and prepare "
+                        "the proposed source-to-target network mapping."
+                    ),
+                    tool_name=(
+                        "check_source_vm_network_interfaces"
+                    ),
+                    parameters={
+                        "resource_group_name": (
+                            request.source_resource_group
+                        ),
+                        "vm_name": request.vm_name,
+                        "expected_source_location": (
+                            request.source_region
+                        ),
+                        "target_resource_group": (
+                            request.target_resource_group
+                        ),
+                        "target_vnet": request.target_vnet,
+                        "target_subnet": (
+                            request.target_subnet
+                        ),
+                    },
+                )
+            )
+
+        # Step 4: Cache storage account
         if (
             request.cache_storage_account
             and request.cache_storage_resource_group
@@ -85,7 +126,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 4: Target resource group
+        # Step 5: Target resource group
         if request.target_resource_group:
             steps.append(
                 ExecutionStep(
@@ -103,7 +144,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 5: Target virtual network
+        # Step 6: Target virtual network
         if (
             request.target_resource_group
             and request.target_vnet
@@ -132,7 +173,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 6: Target subnet
+        # Step 7: Target subnet
         if (
             request.target_resource_group
             and request.target_vnet
@@ -161,7 +202,7 @@ class ExecutionPlanBuilder:
                     },
                 )
             )
-                # Step 7: Target subnet NSG rules
+                # Step 8: Target subnet NSG rules
         if (
             request.target_resource_group
             and request.target_vnet
@@ -199,7 +240,7 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 8: Recovery Services vault
+        # Step 9: Recovery Services vault
         if (
             request.vault_name
             and request.vault_resource_group
