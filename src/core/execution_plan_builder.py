@@ -134,8 +134,45 @@ class ExecutionPlanBuilder:
                     },
                 )
             )
+                # Step 6: Target subnet NSG rules
+        if (
+            request.target_resource_group
+            and request.target_vnet
+            and request.target_subnet
+            and request.source_region
+            and request.target_region
+        ):
+            steps.append(
+                ExecutionStep(
+                    step_id="check-target-nsg-rules",
+                    name="Check target NSG rules",
+                    description=(
+                        "Discover the NSG attached to the target "
+                        "subnet and check for explicit outbound "
+                        "HTTPS rules required by Azure Site Recovery."
+                    ),
+                    tool_name="check_target_nsg_rules",
+                    parameters={
+                        "resource_group_name": (
+                            request.target_resource_group
+                        ),
+                        "virtual_network_name": (
+                            request.target_vnet
+                        ),
+                        "subnet_name": (
+                            request.target_subnet
+                        ),
+                        "source_region": (
+                            request.source_region
+                        ),
+                        "target_region": (
+                            request.target_region
+                        ),
+                    },
+                )
+            )
 
-        # Step 6: Recovery Services vault
+        # Step 7: Recovery Services vault
         if (
             request.vault_name
             and request.vault_resource_group

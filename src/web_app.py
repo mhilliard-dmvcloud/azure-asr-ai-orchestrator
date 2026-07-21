@@ -21,6 +21,7 @@ from tools.target_subnet_tool import TargetSubnetTool
 from tools.target_virtual_network_tool import (
     TargetVirtualNetworkTool,
 )
+from tools.target_nsg_rule_tool import TargetNsgRuleTool
 
 
 def build_registry(config) -> ToolRegistry:
@@ -39,6 +40,9 @@ def build_registry(config) -> ToolRegistry:
     )
     registry.register(
         TargetSubnetTool(azure_service)
+    )
+    registry.register(
+        TargetNsgRuleTool(azure_service)
     )
 
     return registry
