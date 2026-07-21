@@ -3,9 +3,12 @@ import json
 import requests
 import streamlit as st
 
+
 from agents.request_parser import ASRRequestParser
 from ai_client import AzureAIClient
 from config import load_config
+from core.execution_engine import ExecutionEngine
+from core.execution_plan_builder import ExecutionPlanBuilder
 from core.tool_registry import ToolRegistry
 from models.asr_request import ASRRequest
 from services.azure_resource_service import AzureResourceService
@@ -49,6 +52,9 @@ def initialize_session_state() -> None:
 
     if "request_parsed" not in st.session_state:
         st.session_state.request_parsed = False
+
+    if "execution_plan" not in st.session_state:
+        st.session_state.execution_plan = None    
 
 
 def display_tool_result(result) -> None:
@@ -184,6 +190,38 @@ def run_vault_check(registry: ToolRegistry) -> None:
         except Exception as error:
             st.error(f"Application error: {error}")
 
+def display_execution_timeline(plan) -> None:
+    """Display the current execution-plan status."""
+
+    st.subheader("Execution Timeline")
+
+    for step in plan.steps:
+        if step.status == "completed":
+            icon = "✅"
+        elif step.status == "warning":
+            icon = "⚠️"
+        elif step.status == "failed":
+            icon = "❌"
+        elif step.status == "running":
+            icon = "⏳"
+        else:
+            icon = "⬜"
+
+        st.markdown(
+            f"{icon} **{step.name}** — `{step.status}`"
+        )
+
+        if step.error:
+            st.error(step.error)
+
+        if step.result:
+            with st.expander(
+                f"View result: {step.name}",
+                expanded=False,
+            ):
+                st.json(step.result)
+
+
 def display_asr_request_review(
     registry: ToolRegistry,
 ) -> None:
@@ -261,82 +299,96 @@ def display_asr_request_review(
             use_container_width=True,
         )
 
-    if not approved:
-        return
-
-    updated_request = ASRRequest(
-        vm_name=vm_name.strip(),
-        source_resource_group=source_resource_group.strip(),
-        source_region=source_region.strip(),
-        target_region=target_region.strip(),
-        vault_name=vault_name.strip(),
-        vault_resource_group=vault_resource_group.strip(),
-        target_resource_group=target_resource_group.strip(),
-        target_vnet=target_vnet.strip(),
-        target_subnet=target_subnet.strip(),
-        cache_storage_account=cache_storage_account.strip(),
-    )
-
-    st.session_state.asr_request = updated_request
-
-    missing_fields = updated_request.missing_fields()
-
-    if missing_fields:
-        st.error(
-            "Complete these required fields before running prechecks: "
-            + ", ".join(missing_fields)
-        )
-        return
-
-    st.success("Read-only prechecks approved.")
-
-    results = []
-
-    with st.status(
-        "Running approved read-only prechecks...",
-        expanded=True,
-    ) as status:
-        st.write("Checking source resource group")
-
-        resource_group_result = registry.execute(
-            "check_resource_group",
-            resource_group_name=updated_request.source_resource_group,
+    if approved:
+        updated_request = ASRRequest(
+            vm_name=vm_name.strip(),
+            source_resource_group=source_resource_group.strip(),
+            source_region=source_region.strip(),
+            target_region=target_region.strip(),
+            vault_name=vault_name.strip(),
+            vault_resource_group=vault_resource_group.strip(),
+            target_resource_group=target_resource_group.strip(),
+            target_vnet=target_vnet.strip(),
+            target_subnet=target_subnet.strip(),
+            cache_storage_account=cache_storage_account.strip(),
         )
 
-        results.append(resource_group_result)
+        st.session_state.asr_request = updated_request
 
-        if (
-            updated_request.vault_name
-            and updated_request.vault_resource_group
-        ):
-            st.write("Checking Recovery Services vault")
+        missing_fields = updated_request.missing_fields()
 
-            vault_result = registry.execute(
-                "check_recovery_services_vault",
-                resource_group_name=(
-                    updated_request.vault_resource_group
-                ),
-                vault_name=updated_request.vault_name,
-                expected_location=updated_request.target_region,
+        if missing_fields:
+            st.error(
+                "Complete these required fields before running prechecks: "
+                + ", ".join(missing_fields)
+            )
+            return
+
+        st.success("Read-only prechecks approved.")
+
+        plan_builder = ExecutionPlanBuilder()
+        execution_engine = ExecutionEngine(registry)
+
+        execution_plan = plan_builder.build_precheck_plan(
+            updated_request
+        )
+
+        st.subheader("Approved Execution Plan")
+        st.write(execution_plan.description)
+
+        for step in execution_plan.steps:
+            st.markdown(
+                f"- **{step.name}**: {step.description}"
             )
 
-            results.append(vault_result)
-        else:
-            st.write(
-                "Vault check skipped because the vault name or "
-                "vault resource group was not supplied."
+        with st.status(
+            "Running approved read-only prechecks...",
+            expanded=True,
+        ) as status:
+
+            def update_progress(step) -> None:
+                st.write(
+                    f"{step.name}: {step.status}"
+                )
+
+            completed_plan = execution_engine.execute_plan(
+                plan=execution_plan,
+                progress_callback=update_progress,
             )
 
-        status.update(
-            label="Read-only prechecks complete",
-            state="complete",
-            expanded=False,
+            # Preserve the completed timeline across Streamlit reruns.
+            st.session_state.execution_plan = completed_plan
+
+            if completed_plan.status == "completed":
+                status.update(
+                    label="All prechecks completed successfully",
+                    state="complete",
+                    expanded=False,
+                )
+
+            elif (
+                completed_plan.status
+                == "completed_with_warnings"
+            ):
+                status.update(
+                    label="Prechecks completed with warnings",
+                    state="complete",
+                    expanded=True,
+                )
+
+            else:
+                status.update(
+                    label="One or more prechecks failed",
+                    state="error",
+                    expanded=True,
+                )
+
+    # Display the latest timeline even after Streamlit reruns.
+    if st.session_state.execution_plan is not None:
+        display_execution_timeline(
+            st.session_state.execution_plan
         )
 
-    st.subheader("Precheck Results")
-
-    for result in results:
-        display_tool_result(result)
 
 def run_ai_chat(
     ai_client: AzureAIClient,
@@ -460,6 +512,7 @@ def main() -> None:
             st.session_state.pending_action = None
             st.session_state.asr_request = None
             st.session_state.request_parsed = False
+            st.session_state.execution_plan = None
             st.rerun()
 
     chat_tab, resource_group_tab, vault_tab = st.tabs(
