@@ -76,23 +76,89 @@ class ExecutionPlanBuilder:
                 )
             )
 
-        # Step 4: Recovery Services vault
-        if request.vault_name and request.vault_resource_group:
+        # Step 4: Target virtual network
+        if (
+            request.target_resource_group
+            and request.target_vnet
+        ):
+            steps.append(
+                ExecutionStep(
+                    step_id="check-target-virtual-network",
+                    name="Check target virtual network",
+                    description=(
+                        "Verify that the target virtual network "
+                        "exists in the target region and is ready "
+                        "for Site Recovery failover."
+                    ),
+                    tool_name="check_target_virtual_network",
+                    parameters={
+                        "resource_group_name": (
+                            request.target_resource_group
+                        ),
+                        "virtual_network_name": (
+                            request.target_vnet
+                        ),
+                        "expected_location": (
+                            request.target_region
+                        ),
+                    },
+                )
+            )
+
+        # Step 5: Target subnet
+        if (
+            request.target_resource_group
+            and request.target_vnet
+            and request.target_subnet
+        ):
+            steps.append(
+                ExecutionStep(
+                    step_id="check-target-subnet",
+                    name="Check target subnet",
+                    description=(
+                        "Verify that the target subnet exists and "
+                        "return its address space, NSG, route table, "
+                        "and network policy configuration."
+                    ),
+                    tool_name="check_target_subnet",
+                    parameters={
+                        "resource_group_name": (
+                            request.target_resource_group
+                        ),
+                        "virtual_network_name": (
+                            request.target_vnet
+                        ),
+                        "subnet_name": (
+                            request.target_subnet
+                        ),
+                    },
+                )
+            )
+
+        # Step 6: Recovery Services vault
+        if (
+            request.vault_name
+            and request.vault_resource_group
+        ):
             steps.append(
                 ExecutionStep(
                     step_id="check-recovery-services-vault",
                     name="Check Recovery Services vault",
                     description=(
-                        "Verify that the Recovery Services vault exists "
-                        "and matches the expected location."
+                        "Verify that the Recovery Services vault "
+                        "exists and matches the expected location."
                     ),
                     tool_name="check_recovery_services_vault",
                     parameters={
                         "resource_group_name": (
                             request.vault_resource_group
                         ),
-                        "vault_name": request.vault_name,
-                        "expected_location": request.target_region,
+                        "vault_name": (
+                            request.vault_name
+                        ),
+                        "expected_location": (
+                            request.target_region
+                        ),
                     },
                 )
             )
@@ -100,8 +166,9 @@ class ExecutionPlanBuilder:
         return ExecutionPlan(
             name="Azure Site Recovery Precheck Plan",
             description=(
-                f"Read-only prechecks for VM '{request.vm_name}' "
-                f"from '{request.source_region}' to "
+                f"Read-only prechecks for VM "
+                f"'{request.vm_name}' from "
+                f"'{request.source_region}' to "
                 f"'{request.target_region}'."
             ),
             steps=steps,

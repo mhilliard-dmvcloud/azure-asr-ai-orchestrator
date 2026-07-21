@@ -17,6 +17,10 @@ from tools.resource_group_tool import ResourceGroupTool
 from tools.cache_storage_account_tool import (
     CacheStorageAccountTool,
 )
+from tools.target_subnet_tool import TargetSubnetTool
+from tools.target_virtual_network_tool import (
+    TargetVirtualNetworkTool,
+)
 
 
 def build_registry(config) -> ToolRegistry:
@@ -30,6 +34,12 @@ def build_registry(config) -> ToolRegistry:
     registry.register(ResourceGroupTool(azure_service))
     registry.register(RecoveryServicesVaultTool(azure_service))
     registry.register(CacheStorageAccountTool(azure_service))
+    registry.register(
+        TargetVirtualNetworkTool(azure_service)
+    )
+    registry.register(
+        TargetSubnetTool(azure_service)
+    )
 
     return registry
 
