@@ -14,6 +14,9 @@ from models.asr_request import ASRRequest
 from services.azure_resource_service import AzureResourceService
 from tools.recovery_services_vault_tool import RecoveryServicesVaultTool
 from tools.resource_group_tool import ResourceGroupTool
+from tools.cache_storage_account_tool import (
+    CacheStorageAccountTool,
+)
 
 
 def build_registry(config) -> ToolRegistry:
@@ -26,6 +29,7 @@ def build_registry(config) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(ResourceGroupTool(azure_service))
     registry.register(RecoveryServicesVaultTool(azure_service))
+    registry.register(CacheStorageAccountTool(azure_service))
 
     return registry
 
@@ -288,11 +292,18 @@ def display_asr_request_review(
             value=request_data.target_subnet,
         )
 
+        cache_storage_resource_group = st.text_input(
+            "Cache storage resource group",
+            value=request_data.cache_storage_resource_group,
+            placeholder="rg-asr-source-eastus",
+        )
+
         cache_storage_account = st.text_input(
             "Cache storage account",
             value=request_data.cache_storage_account,
+            placeholder="stasrcacheeastus001",
         )
-
+    
         approved = st.form_submit_button(
             "Approve Read-Only Prechecks",
             type="primary",
@@ -310,7 +321,12 @@ def display_asr_request_review(
             target_resource_group=target_resource_group.strip(),
             target_vnet=target_vnet.strip(),
             target_subnet=target_subnet.strip(),
-            cache_storage_account=cache_storage_account.strip(),
+            cache_storage_resource_group=(
+                cache_storage_resource_group.strip()
+           ),
+            cache_storage_account=(
+                cache_storage_account.strip()
+            ),
         )
 
         st.session_state.asr_request = updated_request
@@ -450,6 +466,7 @@ def run_ai_chat(
 
             st.session_state.asr_request = parsed_request
             st.session_state.request_parsed = True
+            st.session_state.execution_plan = None
 
         except Exception as error:
             error_message = f"Request analysis failed: {error}"

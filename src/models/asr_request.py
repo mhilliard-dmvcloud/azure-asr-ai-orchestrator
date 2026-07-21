@@ -15,6 +15,7 @@ class ASRRequest:
     target_resource_group: str = ""
     target_vnet: str = ""
     target_subnet: str = ""
+    cache_storage_resource_group: str = ""
     cache_storage_account: str = ""
 
     def to_dict(self) -> dict[str, Any]:

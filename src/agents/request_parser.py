@@ -73,7 +73,15 @@ User request:
                 parsed_data.get("target_resource_group", "")
             ),
             target_vnet=str(parsed_data.get("target_vnet", "")),
-            target_subnet=str(parsed_data.get("target_subnet", "")),
+            target_subnet=str(
+                parsed_data.get("target_subnet", "")
+            ),
+            cache_storage_resource_group=str(
+                parsed_data.get(
+                    "cache_storage_resource_group",
+                    "",
+                )
+            ),
             cache_storage_account=str(
                 parsed_data.get("cache_storage_account", "")
             ),

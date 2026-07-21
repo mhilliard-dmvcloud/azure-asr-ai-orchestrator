@@ -4,7 +4,7 @@ from models.execution_step import ExecutionStep
 
 
 class ExecutionPlanBuilder:
-    """Builds a read-only ASR precheck plan."""
+    """Builds a read-only Azure Site Recovery precheck plan."""
 
     def build_precheck_plan(
         self,
@@ -12,6 +12,7 @@ class ExecutionPlanBuilder:
     ) -> ExecutionPlan:
         steps: list[ExecutionStep] = []
 
+        # Step 1: Source resource group
         steps.append(
             ExecutionStep(
                 step_id="check-source-resource-group",
@@ -23,11 +24,41 @@ class ExecutionPlanBuilder:
                 parameters={
                     "resource_group_name": (
                         request.source_resource_group
-                    )
+                    ),
                 },
             )
         )
 
+        # Step 2: Cache storage account
+        if (
+            request.cache_storage_account
+            and request.cache_storage_resource_group
+        ):
+            steps.append(
+                ExecutionStep(
+                    step_id="check-cache-storage-account",
+                    name="Check cache storage account",
+                    description=(
+                        "Verify that the Azure Site Recovery cache "
+                        "storage account exists in the source region "
+                        "and has supported storage properties."
+                    ),
+                    tool_name="check_cache_storage_account",
+                    parameters={
+                        "resource_group_name": (
+                            request.cache_storage_resource_group
+                        ),
+                        "storage_account_name": (
+                            request.cache_storage_account
+                        ),
+                        "expected_location": (
+                            request.source_region
+                        ),
+                    },
+                )
+            )
+
+        # Step 3: Target resource group
         if request.target_resource_group:
             steps.append(
                 ExecutionStep(
@@ -40,11 +71,12 @@ class ExecutionPlanBuilder:
                     parameters={
                         "resource_group_name": (
                             request.target_resource_group
-                        )
+                        ),
                     },
                 )
             )
 
+        # Step 4: Recovery Services vault
         if request.vault_name and request.vault_resource_group:
             steps.append(
                 ExecutionStep(
